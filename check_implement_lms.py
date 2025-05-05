@@ -10,6 +10,7 @@ import requests
 from datetime import datetime
 from openpyxl import Workbook
 import json
+import re
 
 def get_string(str, start = "IDNumber"):
       position = str.find(start)
@@ -20,6 +21,23 @@ def get_string(str, start = "IDNumber"):
 def delete_string(str, delete_word = "IDNumber", semester = "242"):
       return str.replace("".join([delete_word, " ", semester, "_"]), "")
 
+
+def get_dictionary(txt):
+      lines = txt.splitlines()
+      subject = ""
+      group = ""
+      techer_id = ""
+      teacher_name = ""
+      for i, line in enumerate(lines):
+            if line.startswith("[242]"):
+                  match = re.search(r"\[242\]\s+(\w+)\s+-.*\((\w+)-(\w+)\)", line)
+                  if match:
+                        subject = match.group(1)     # FINA2343
+                        techer_id = match.group(2)      # KT196
+                        group = match.group(3)       # TN303
+            elif line.startswith("Giảng viên"):
+                  teacher_name = line.split(". ", 1)[-1].strip()
+      return [group, subject, techer_id, teacher_name]
 
 def get_lsa(semester, url):
       value = "Đăng nhập bằng HCMCOU-SSO"
@@ -124,14 +142,19 @@ def get_lsa(semester, url):
       except: 
             print("không tìm thấy các dòng")
 
-      get_subject = list()
+      get_subject = {}
       for row in rows:
             cells = row.find_elements(By.XPATH, ".//td")
             for cell in cells:
-                  if "[242]" in cell.text and len(get_string(cell.text)) > len("IDNumber"):
-                        get_subject.append(delete_string(str(get_string(cell.text))))
+                  # if "[242]" in cell.text and len(get_string(cell.text)) > len("IDNumber"):
+                  #       get_subject.append(delete_string(str(get_string(cell.text))))
+                  #get_subject.append(cell.text)
+                  
+                  subject, group, teacher_id, teacher_name = get_dictionary(cell.text)
+                  #get_subject[group + "-" + subject] = [teacher_id, teacher_name]
+                  print(f"{group} - {subject} [{teacher_id}, {teacher_name}]")
 
-      return get_subject
+      #return get_subject
 
 
 # định dạng ngày có dạng yyyy-MM-DD
@@ -143,7 +166,7 @@ def get_subject_by_day(semester, from_day, to_day):
       }
       from_day = datetime.strptime(from_day, "%Y-%m-%d")
       to_day = datetime.strptime(to_day, "%Y-%m-%d")
-      list_subject_in_range = []
+      list_subject_in_range = {}
 
       get_list_unit = requests.get(url_link_unit, headers=headers)
       list_unit = get_list_unit.json()
@@ -157,20 +180,20 @@ def get_subject_by_day(semester, from_day, to_day):
             for lst in list_subject_semester.get("data", []):
                   if lst["TUNGAYTKB"] is not None:
                         if from_day <= datetime.strptime(lst["TUNGAYTKB"], "%Y-%m-%d") <= to_day:
-
-                              per_subject = {
-                                    "NhomTo": lst["NhomTo"], 
-                                    "MaMH": lst["MaMH"],
-                                    "TenMH": lst["TenMH"],
-                                    "TUNGAYTKB": lst["TUNGAYTKB"],
-                                    "MaLop": lst["MaLop"],
-                                    "TenLop": lst["TenLop"],
-                                    "MaDP": lst["MaDP"],
-                                    "TenDP": lst["TenDP"]
-                              }
-                              if per_subject not in list_subject_in_range:
-                                    list_subject_in_range.append(per_subject)
-     
+                              key = lst["NhomTo"] + "-" + lst["MaMH"]
+                              if key not in list_subject_in_range:
+                                    list_subject_in_range[key] =  [
+                                          lst["NhomTo"], 
+                                          lst["MaMH"],
+                                          lst["TenMH"],
+                                          lst["TUNGAYTKB"],
+                                          lst["MaLop"],
+                                          lst["TenLop"],
+                                          lst["MaDP"],
+                                          lst["TenDP"]
+                                    ]
+                              else:
+                                    list_subject_in_range[key][4] = ",".join([list_subject_in_range[key][4], lst["MaLop"]])     
       return list_subject_in_range
 
 
@@ -179,18 +202,22 @@ def main():
       from_day = "2025-04-21"
       to_day = "2025-04-27"
       url_lsa = "http://lsa.ou.edu.vn"
-      report_final = []
+      #report_final = []
 
       list_lsa = get_lsa(semester, url_lsa)
-      list_subject_by_day = get_subject_by_day(semester, from_day, to_day)
+      #list_subject_by_day = get_subject_by_day(semester, from_day, to_day)
 
 
-      for subject in list_subject_by_day:
-            sub_group = subject["MaMH"] + "_" + subject["NhomTo"]
-            print(subject["TUNGAYTKB"])
-            if any(sub_group in lsa for lsa in list_lsa):
-                  report_final.append(subject)
+      # for subject in list_subject_by_day:
+      #       sub_group = subject["MaMH"] + "_" + subject["NhomTo"]
+      #       print(subject["TUNGAYTKB"])
+      #       if any(sub_group in lsa for lsa in list_lsa):
+      #             report_final.append(subject)
       
-      print(len(report_final))
+      # for key, value in list_subject_by_day.items():
+      #       print(value[4])
+
+      #print(list_lsa())
+
 if __name__ == "__main__":
       main()
